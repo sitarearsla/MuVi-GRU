@@ -24,7 +24,7 @@ class MuVi_Dataset(Dataset):
         data = data.truncate(after=117)  # length=118 for training
         data = data.iloc[:, 2:(len(data.columns) - 1)]  # drop columns from opensmile not required for model training
 
-        for j in range(len(data) - self.seq_len):
+        for j in range(len(data) - self.seq_len): # 114 windowed samples of 4 sequence length
             x_data.append(np.array(data[j:(j + self.seq_len)]))
 
         # keep last arousal-valence value of each window as the prediction target
@@ -37,12 +37,13 @@ class MuVi_Dataset(Dataset):
         y_valence = y_valence.truncate(before=len(y_valence) - 118 + self.seq_len).reset_index(drop=True)
         y_valence = y_valence.truncate(after=len(data) - self.seq_len - 1)
 
-        y_arousal = np.array(y_arousal)
-        y_valence = np.array(y_valence)
+        y_arousal =  torch.from_numpy(np.array(y_arousal)).float()
+        y_valence =  torch.from_numpy(np.array(y_valence)).float()
+        x_data =  torch.from_numpy(np.array(x_data)).float()
 
-        print(len(x_data))
-        print(y_arousal.shape)
-        print(y_valence.shape)
+        # print(x_data.size()) # (114, 4, 988)
+        # print(y_arousal.size()) # (114,)
+        # print(y_valence.size()) # (114,)
 
         return x_data, y_arousal, y_valence
 
