@@ -9,113 +9,102 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 import matplotlib.pyplot as plt
+from audtorch.metrics.functional import concordance_cc
 
 
-def validate(model, dataloader, criterion):
+def validate(model, dataloader, criterion, valence=True):
     """Validate model performance on the validation dataset"""
     model.eval()
-    total_loss, total_arousal_loss, total_valence_loss = 0.0, 0.0, 0.0
+    total_loss = 0.0
     # print("dataset len: ", len(dataloader.dataset))
     with torch.no_grad():
         for batch in dataloader:
             x_data, y_arousal, y_valence = batch
             if torch.cuda.is_available():
-                x_data, y_arousal, y_valence = x_data.cuda(), y_arousal.cuda(), y_valence.cuda()
+                if valence:
+                    x_data, y_valence = x_data.cuda(), y_valence.cuda()
+                else:
+                    x_data, y_arousal = x_data.cuda(), y_arousal.cuda()
             pred = model(x_data)
-            pred_arousal, pred_valence = pred[:, :, 0], pred[:, :, 1]
-            arousal_loss = criterion(pred_arousal, y_arousal)
-            valence_loss = criterion(pred_valence, y_valence)
-            loss = arousal_loss + valence_loss
-            total_arousal_loss += arousal_loss
-            total_valence_loss += valence_loss
+            y = y_valence if valence else y_arousal
+            loss = criterion(pred, y)
             total_loss += loss
+            ccc = concordance_cc(y.clone().detach().reshape(-1), pred.clone().detach().reshape(-1))
 
-        avg_arousal_loss = total_arousal_loss / len(dataloader.dataset)
-        avg_valence_loss = total_valence_loss / len(dataloader.dataset)
         avg_total_loss = total_loss / len(dataloader.dataset)
-
-        print('Validation - AVG Valence loss: ', avg_valence_loss.item())
-        print('Validation - AVG Arousal loss: ', avg_arousal_loss.item())
+        print('Validation - CCC: ', ccc.item())
         print('Validation - AVG Total loss:', avg_total_loss.item())
-    return avg_arousal_loss.item(), avg_valence_loss.item(), avg_total_loss.item()
+    return avg_total_loss.item(), ccc.item()
 
 
-def train(model, dataloader, optimizer, criterion):
+def train(model, dataloader, optimizer, criterion, valence=True):
     """Train model on the training dataset for one epoch"""
 
     model.train()
-    total_loss, total_arousal_loss, total_valence_loss = 0.0, 0.0, 0.0
-    print("dataset len: ", len(dataloader.dataset))
-    for batch in dataloader:
+    total_loss = 0.0
+    # print("dataset len: ", len(dataloader.dataset))
+    for batch_id, batch in enumerate(dataloader):
         optimizer.zero_grad()
         x_data, y_arousal, y_valence = batch
 
         if torch.cuda.is_available():
-            x_data, y_arousal, y_valence = x_data.cuda(), y_arousal.cuda(), y_valence.cuda()
+            if valence:
+                x_data, y_valence = x_data.cuda(), y_valence.cuda()
+            else:
+                x_data, y_arousal = x_data.cuda(), y_arousal.cuda()
         pred = model(x_data)
-        pred_arousal, pred_valence = pred[:,:,0], pred[:,:,1]
-        arousal_loss = criterion(pred_arousal, y_arousal)
-        valence_loss = criterion(pred_valence, y_valence)
-        loss = arousal_loss + valence_loss
+        y = y_valence if valence else y_arousal
+        loss = criterion(pred, y)
         loss.backward()
         optimizer.step()
-        total_arousal_loss += arousal_loss
-        total_valence_loss += valence_loss
+
+        # Show progress
+        # if batch_id % 5 == 0 or batch_id == len(dataloader):
+            # print('[{}/{}] loss: {:.8}'.format(batch_id, len(dataloader), loss.item()))
+        ccc = concordance_cc(y.clone().detach().reshape(-1), pred.clone().detach().reshape(-1))
         total_loss += loss
 
-    avg_arousal_loss = total_arousal_loss / len(dataloader.dataset)
-    avg_valence_loss = total_valence_loss / len(dataloader.dataset)
     avg_total_loss = total_loss / len(dataloader.dataset)
-    print('Train - AVG Valence loss: ', avg_valence_loss.item())
-    print('Train - AVG Arousal loss: ', avg_arousal_loss.item())
+    print('Train - CCC: ', ccc.item())
     print('Train - AVG Total loss:', avg_total_loss.item())
-    return avg_arousal_loss.item(), avg_valence_loss.item(), avg_total_loss.item()
+
+    return avg_total_loss, ccc.item()
 
 
 def plot_losses(train_loss, val_loss):
     """Visualize the plots and save them for report."""
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3)
+    fig, (ax1, ax2) = plt.subplots(2)
     fig.suptitle('GRU Loss Plots')
     fig.supxlabel('Epoch')
     fig.supylabel('Loss')
-    ax1.set_title('Total Loss')
-    ax2.set_title('Avg Valence Loss')
-    ax3.set_title('Avg Arousal Loss')
+    ax1.set_title('MSE Loss')
+    ax2.set_title('Concordance Correlation Coefficient')
 
-    train_losses_arousal = train_loss['aro']
-    train_losses_valence = train_loss['val']
-    train_losses_total = train_loss['total']
+    train_losses_mse = train_loss['mse']
+    train_losses_ccc = train_loss['ccc']
 
-    val_losses_valence = val_loss['aro']
-    val_losses_arousal = val_loss['val']
-    val_losses_total = val_loss['total']
+    val_losses_mse = val_loss['mse']
+    val_losses_ccc = val_loss['ccc']
 
-    total_loss_train_x = range(len(train_losses_total))
-    valence_loss_train_x = range(len(train_losses_valence))
-    arousal_loss_train_x = range(len(train_losses_arousal))
+    train_losses_mse_x = range(len(train_losses_mse))
+    train_losses_ccc_x = range(len(train_losses_ccc))
 
-    total_loss_val_x = range(len(val_losses_total))
-    valence_loss_val_x = range(len(val_losses_valence))
-    arousal_loss_val_x = range(len(val_losses_arousal))
+    val_losses_mse_x = range(len(val_losses_mse))
+    val_losses_ccc_x = range(len(val_losses_ccc))
 
-    ax1.plot(total_loss_train_x, train_losses_total, 'b', label='train')
-    ax1.plot(total_loss_val_x, val_losses_total, 'r', label='validation')
+    ax1.plot(train_losses_mse_x, train_losses_mse, 'b', label='train')
+    ax1.plot(val_losses_mse_x, val_losses_mse, 'r', label='validation')
     ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
     ax1.set_facecolor("white")
 
-    ax2.plot(valence_loss_train_x, train_losses_valence, 'b', label='train')
-    ax2.plot(valence_loss_val_x, val_losses_valence, 'r', label='validation')
+    ax2.plot(train_losses_ccc_x, train_losses_ccc, 'b', label='train')
+    ax2.plot(val_losses_ccc_x, val_losses_ccc, 'r', label='validation')
     ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
     ax2.set_facecolor("white")
 
-    ax3.plot(arousal_loss_train_x, train_losses_arousal, 'b', label='train')
-    ax3.plot(arousal_loss_val_x, val_losses_arousal, 'g', label='validation')
-    ax3.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
-    ax3.set_facecolor("white")
-
     fig.tight_layout()
-    plt.savefig('gru_loss.png')
+    plt.savefig('gru_loss_single_modal.png')
 
 def getEWE(data):
     """
@@ -171,7 +160,7 @@ def main():
     # Change these paths to the correct paths in your downloaded expert dataset
     data_root = "./"
 
-    save_path = data_root + "models/audio_model.ckpt"
+    save_path = data_root + "models/audio_model_valence.ckpt"
 
     # av_data includes the dynamic (continuous) annotations for Valence and Arousal.
     av_df = pd.read_csv(data_root + "av_data.csv")
@@ -203,14 +192,14 @@ def main():
     # hyper-parameters
     hp = {
         'num_epochs': 200,  # number of epochs
-        'batch_size': 32,  # batch size
+        'batch_size': 8,  # batch size
         'seq_len': 4,  # sequence length
         'num_layers' : 4, # stacking 4 RNNs
         'lr': 1e-5, # learning rate
         'dropout': 0.5,
         'embedding_size': 256,
         'hidden_size': 256,
-        'output_size' : 228,
+        'output_size' : 114,
         'input_size': 988,
         'bidirectional': False,
     }
@@ -235,40 +224,55 @@ def main():
     train_loader = DataLoader(dataset, batch_size=hp['batch_size'], sampler=train_sampler, drop_last=True)
     val_loader = DataLoader(dataset, batch_size=hp['batch_size'], sampler=val_sampler)
 
-    train_losses_valence = []
-    train_losses_arousal = []
-    train_losses_total = []
 
-    val_losses_valence = []
-    val_losses_arousal = []
-    val_losses_total = []
+    train_losses_mse = []
+    val_losses_mse = []
+    train_losses_ccc = []
+    val_losses_ccc = []
 
     print('Starting GRU training for valence and arousal...')
+    # Early stopping
+    last_loss = 100
+    patience = 7
+    trigger_times = 0
 
     for i in range(hp['num_epochs']):
+        print('-------------------------------------------------------')
         print('Epoch: ' + str(i))
-        arousal_loss, valence_loss, total_loss = train(model, train_loader, optimizer, criterion)
-        train_losses_valence.append(valence_loss)
-        train_losses_arousal.append(arousal_loss)
-        train_losses_total.append(total_loss)
+        total_loss, ccc_train = train(model, train_loader, optimizer, criterion)
+        train_losses_mse.append(total_loss)
+        train_losses_ccc.append(ccc_train)
 
-        val_arousal_loss, val_valence_loss, val_total_loss = validate(model, val_loader, criterion)
-        val_losses_valence.append(val_valence_loss)
-        val_losses_arousal.append(val_arousal_loss)
-        val_losses_total.append(val_total_loss)
+        # Early stopping
+        current_loss, ccc_val = validate(model, val_loader, criterion)
+        val_losses_mse.append(total_loss)
+        val_losses_ccc.append(ccc_val)
+
+        if current_loss > last_loss:
+            trigger_times += 1
+            print('Trigger Times:', trigger_times)
+
+            if trigger_times >= patience:
+                print('Early stopping!\n Saving the model.')
+                return
+
+        else:
+            print('trigger times: 0')
+            trigger_times = 0
+
+        last_loss = current_loss
 
     train_loss = {
-        'val':train_losses_valence,
-        'aro':train_losses_arousal,
-        'total':train_losses_total
+        'mse': train_losses_mse,
+        'ccc': train_losses_ccc,
     }
 
     val_loss = {
-        'val': val_losses_valence,
-        'aro': val_losses_arousal,
-        'total': val_losses_total
+        'mse': val_losses_mse,
+        'ccc': val_losses_ccc,
     }
 
+    print("Finished training. . . ")
     torch.save(model, save_path)
     save_results(train_loss, val_loss)
     plot_losses(train_loss, val_loss)

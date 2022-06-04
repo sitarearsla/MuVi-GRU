@@ -64,5 +64,5 @@ class Audio_GRU(nn.Module):
         # out = out[:, -1, :]
         out = out.sum(dim=1) # shape -> (32, 256)
         out = self.fc_layer(out)
-        out = torch.reshape(out, (out.shape[0], out.shape[1]//2, 2))
+        # out = torch.reshape(out, (out.shape[0], out.shape[1]//2, 2))
         return out
