@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from audtorch.metrics.functional import concordance_cc
 
 
-def validate(model, dataloader, criterion, valence=True):
+def validate(model, dataloader, criterion, valence=False):
     """Validate model performance on the validation dataset"""
     model.eval()
     total_loss = 0.0
@@ -33,11 +33,11 @@ def validate(model, dataloader, criterion, valence=True):
 
         avg_total_loss = total_loss / len(dataloader.dataset)
         print('Validation - CCC: ', ccc.item())
-        print('Validation - AVG Total loss:', avg_total_loss.item())
+        print('Validation - MSE:', avg_total_loss.item())
     return avg_total_loss.item(), ccc.item()
 
 
-def train(model, dataloader, optimizer, criterion, valence=True):
+def train(model, dataloader, optimizer, criterion, valence=False):
     """Train model on the training dataset for one epoch"""
 
     model.train()
@@ -66,9 +66,9 @@ def train(model, dataloader, optimizer, criterion, valence=True):
 
     avg_total_loss = total_loss / len(dataloader.dataset)
     print('Train - CCC: ', ccc.item())
-    print('Train - AVG Total loss:', avg_total_loss.item())
+    print('Train - MSE:', avg_total_loss.item())
 
-    return avg_total_loss, ccc.item()
+    return avg_total_loss.item(), ccc.item()
 
 
 def plot_losses(train_loss, val_loss):
@@ -191,7 +191,7 @@ def main():
 
     # hyper-parameters
     hp = {
-        'num_epochs': 200,  # number of epochs
+        'num_epochs': 100,  # number of epochs
         'batch_size': 8,  # batch size
         'seq_len': 4,  # sequence length
         'num_layers' : 4, # stacking 4 RNNs
@@ -230,7 +230,7 @@ def main():
     train_losses_ccc = []
     val_losses_ccc = []
 
-    print('Starting GRU training for valence and arousal...')
+    print('Starting GRU training ...')
     # Early stopping
     last_loss = 100
     patience = 7
