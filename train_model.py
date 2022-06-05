@@ -71,7 +71,7 @@ def train(model, dataloader, optimizer, criterion, valence=False):
     return avg_total_loss.item(), ccc.item()
 
 
-def plot_losses(train_loss, val_loss):
+def plot_losses(train_loss, val_loss, valence=False):
     """Visualize the plots and save them for report."""
 
     fig, (ax1, ax2) = plt.subplots(2)
@@ -104,7 +104,9 @@ def plot_losses(train_loss, val_loss):
     ax2.set_facecolor("white")
 
     fig.tight_layout()
-    plt.savefig('gru_loss_single_modal.png')
+    train_type = 'valence' if valence else 'arousal'
+    plt.savefig('gru_loss_' + train_type +'.png')
+
 
 def getEWE(data):
     """
@@ -148,19 +150,19 @@ def getEWE(data):
 
     return ewe_arousal, ewe_valence, std_arousal, std_valence
 
-def save_results(train_loss, val_loss):
+def save_results(train_loss, val_loss, valence=False):
     # creating a Dataframe object
     df_train = pd.DataFrame(train_loss)
     df_validation = pd.DataFrame(val_loss)
-    df_train.to_csv('train_loss.csv')
-    df_validation.to_csv('validation_loss.csv')
+    train_type = 'valence' if valence else 'arousal'
+    df_train.to_csv('train_loss_' + train_type + '.csv')
+    df_validation.to_csv('validation_loss_' + train_type +'.csv')
 
-def main():
+def main(valence=False):
     random_seed = 42
     # Change these paths to the correct paths in your downloaded expert dataset
     data_root = "./"
-
-    save_path = data_root + "models/audio_model_valence.ckpt"
+    save_path = data_root + 'models/'
 
     # av_data includes the dynamic (continuous) annotations for Valence and Arousal.
     av_df = pd.read_csv(data_root + "av_data.csv")
@@ -224,13 +226,15 @@ def main():
     train_loader = DataLoader(dataset, batch_size=hp['batch_size'], sampler=train_sampler, drop_last=True)
     val_loader = DataLoader(dataset, batch_size=hp['batch_size'], sampler=val_sampler)
 
-
     train_losses_mse = []
     val_losses_mse = []
     train_losses_ccc = []
     val_losses_ccc = []
 
-    print('Starting GRU training ...')
+    train_type = 'valence' if valence else 'arousal'
+    #AROUSAL
+
+    print('Starting GRU training for '+ train_type +' ...')
     # Early stopping
     last_loss = 100
     patience = 7
@@ -239,12 +243,12 @@ def main():
     for i in range(hp['num_epochs']):
         print('-------------------------------------------------------')
         print('Epoch: ' + str(i))
-        total_loss, ccc_train = train(model, train_loader, optimizer, criterion)
+        total_loss, ccc_train = train(model, train_loader, optimizer, criterion, valence)
         train_losses_mse.append(total_loss)
         train_losses_ccc.append(ccc_train)
 
         # Early stopping
-        current_loss, ccc_val = validate(model, val_loader, criterion)
+        current_loss, ccc_val = validate(model, val_loader, criterion, valence)
         val_losses_mse.append(total_loss)
         val_losses_ccc.append(ccc_val)
 
@@ -271,12 +275,16 @@ def main():
         'mse': val_losses_mse,
         'ccc': val_losses_ccc,
     }
-
-    print("Finished training. . . ")
-    torch.save(model, save_path)
-    save_results(train_loss, val_loss)
-    plot_losses(train_loss, val_loss)
+    
+    
+    print("Finished training for" + train_type +". . . ")
+    torch.save(model, save_path + 'audio_model_' + train_type + '.ckpt')
+    save_results(train_loss, val_loss, valence)
+    plot_losses(train_loss, val_loss, valence)
+    
+    ########################################################################################
 
 
 if __name__ == "__main__":
-    main()
+    main(False)
+    main(True)
